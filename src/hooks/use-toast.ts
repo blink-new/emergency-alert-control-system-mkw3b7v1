@@ -18,12 +18,13 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement
 }
 
-const actionTypes = {
+// Action types – kept as a type helper only (no runtime usage needed)
+export const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
   UPDATE_TOAST: "UPDATE_TOAST",
   DISMISS_TOAST: "DISMISS_TOAST",
   REMOVE_TOAST: "REMOVE_TOAST",
-} as const
+} as const satisfies Record<string, string>
 
 let count = 0
 
@@ -182,7 +183,9 @@ function useToast() {
         listeners.splice(index, 1)
       }
     }
-  }, [state])
+    // Empty dependency array ensures we add/remove listener only once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return {
     ...state,

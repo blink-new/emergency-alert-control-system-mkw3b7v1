@@ -53,6 +53,7 @@ export default function AdminControlPanel() {
   const [newAdminEmail, setNewAdminEmail] = useState('')
   const [isAddingAdmin, setIsAddingAdmin] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [alertHistory, setAlertHistory] = useState<AlertState[]>([])
 
   useEffect(() => {
     const unsubscribe = blink.auth.onAuthStateChanged((state) => {
@@ -65,28 +66,52 @@ export default function AdminControlPanel() {
   useEffect(() => {
     if (!user) return
 
-    const unsubscribe = blink.realtime.subscribe('alert-system', (message) => {
-      if (message.type === 'alert-update') {
-        setAlertState(message.data)
-      }
-    })
+    let unsubscribe: (() => void) | undefined;
 
-    return unsubscribe
-  }, [user])
+    const setupSubscription = async () => {
+      unsubscribe = await blink.realtime.subscribe('alert-system', (message) => {
+        if (message.type === 'alert-update') {
+          const newAlertState = message.data as AlertState;
+          setAlertState(newAlertState);
+          // Add to history only when alert is triggered or stopped
+          if (newAlertState.isActive || (!newAlertState.isActive && alertState.isActive)) {
+            setAlertHistory(prevHistory => [newAlertState, ...prevHistory]);
+          }
+        }
+      });
+    };
+
+    setupSubscription();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [user]);
 
   // Subscribe to real-time presence updates
   useEffect(() => {
     if (!user) return
 
-    const unsubscribe = blink.realtime.subscribe('alert-system', (message) => {
-      if (message.type === 'presence-update') {
-        // Update connected devices list
-        fetchConnectedDevices()
-      }
-    })
+    let unsubscribe: (() => void) | undefined;
 
-    return unsubscribe
-  }, [user])
+    const setupPresenceSub = async () => {
+      unsubscribe = await blink.realtime.subscribe('alert-system', (message) => {
+        if (message.type === 'presence-update') {
+          fetchConnectedDevices()
+        }
+      });
+    };
+
+    setupPresenceSub();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [user]);
 
   const fetchConnectedDevices = async () => {
     try {
@@ -365,9 +390,32 @@ export default function AdminControlPanel() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-500 text-center py-8">
-                Alert history will be displayed here
-              </p>
+              {alertHistory.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">
+                  No alert events recorded yet.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {alertHistory.map((event, index) => (
+                    <div key={index} className={`p-4 rounded-lg border ${event.isActive ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {event.isActive ? (
+                            <AlertTriangle className="h-5 w-5 text-red-600" />
+                          ) : (
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                          )}
+                          <div>
+                            <p className="font-semibold">{event.message}</p>
+                            <p className="text-sm text-gray-600">Triggered by: {event.triggeredBy}</p>
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-500">{new Date(event.triggeredAt).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

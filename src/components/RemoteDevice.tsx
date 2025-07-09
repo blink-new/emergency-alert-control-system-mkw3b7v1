@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from './ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
-import { AlertTriangle, StopCircle, Shield, Eye } from 'lucide-react'
+import { AlertTriangle, Shield, Eye } from 'lucide-react'
 import { blink } from '../lib/blink'
 import toast from 'react-hot-toast'
 
@@ -30,7 +30,6 @@ export default function RemoteDevice() {
   })
   const [user, setUser] = useState<User | null>(null)
   const [isPanicPressed, setIsPanicPressed] = useState(false)
-  const [isStopPressed, setIsStopPressed] = useState(false)
 
   useEffect(() => {
     const unsubscribe = blink.auth.onAuthStateChanged((state) => {
@@ -39,17 +38,24 @@ export default function RemoteDevice() {
     return unsubscribe
   }, [])
 
-  // Subscribe to real-time alert updates
   useEffect(() => {
     if (!user) return
 
-    const unsubscribe = blink.realtime.subscribe('alert-system', (message) => {
-      if (message.type === 'alert-update') {
-        setAlertState(message.data)
-      }
-    })
+    let unsubscribe: (() => void) | undefined
 
-    return unsubscribe
+    const setupSubscription = async () => {
+      unsubscribe = await blink.realtime.subscribe('alert-system', (message) => {
+        if (message.type === 'alert-update') {
+          setAlertState(message.data)
+        }
+      })
+    }
+
+    setupSubscription()
+
+    return () => {
+      if (unsubscribe) unsubscribe()
+    }
   }, [user])
 
   const handlePanicPress = async () => {
@@ -76,33 +82,6 @@ export default function RemoteDevice() {
       toast.error('Failed to activate panic alert')
     } finally {
       setIsPanicPressed(false)
-    }
-  }
-
-  const handleStopPress = async () => {
-    if (!user) return
-    
-    setIsStopPressed(true)
-    
-    try {
-      const alertData = {
-        isActive: false,
-        alertType: 'stop' as const,
-        message: 'Alert deactivated',
-        triggeredBy: user.email,
-        triggeredAt: new Date().toISOString()
-      }
-
-      // Publish real-time alert
-      await blink.realtime.publish('alert-system', 'alert-update', alertData)
-      
-      setAlertState(alertData)
-      toast.success('✅ Alert deactivated')
-    } catch (error) {
-      console.error('Error deactivating alert:', error)
-      toast.error('Failed to deactivate alert')
-    } finally {
-      setIsStopPressed(false)
     }
   }
 
@@ -151,9 +130,9 @@ export default function RemoteDevice() {
             <div className="space-y-4">
               <Button
                 onClick={handlePanicPress}
-                disabled={isPanicPressed}
+                disabled={isPanicPressed || alertState.isActive}
                 size="lg"
-                className="w-full h-20 bg-red-600 hover:bg-red-700 text-white text-xl font-bold rounded-xl shadow-lg transform transition-all duration-150 hover:scale-105 active:scale-95"
+                className="w-full h-20 bg-red-600 hover:bg-red-700 text-white text-xl font-bold rounded-xl shadow-lg transform transition-all duration-150 hover:scale-105 active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 {isPanicPressed ? (
                   <div className="flex items-center gap-2">
@@ -164,26 +143,6 @@ export default function RemoteDevice() {
                   <div className="flex items-center gap-2">
                     <AlertTriangle className="h-8 w-8" />
                     PANIC
-                  </div>
-                )}
-              </Button>
-
-              <Button
-                onClick={handleStopPress}
-                disabled={isStopPressed}
-                size="lg"
-                variant="outline"
-                className="w-full h-16 border-2 border-green-600 text-green-600 hover:bg-green-50 text-lg font-semibold rounded-xl shadow-lg transform transition-all duration-150 hover:scale-105 active:scale-95"
-              >
-                {isStopPressed ? (
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600"></div>
-                    STOPPING...
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <StopCircle className="h-6 w-6" />
-                    STOP ALERT
                   </div>
                 )}
               </Button>
